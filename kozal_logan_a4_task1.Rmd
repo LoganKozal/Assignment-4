@@ -1,0 +1,73 @@
+---
+title: "task1"
+author: "Logan Kozal"
+date: "3/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(here)
+library(ggdendro)
+```
+## DATA & METADATA SOURCE: 
+SBC LTER: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000
+Creators: Santa Barbara Coastal LTER, & Melack, John M
+Citation: Santa Barbara Coastal LTER and J. Melack. 2019. SBC LTER: Land: Stream chemistry in the Santa Barbara Coastal drainage area, ongoing since 2000 ver 16. Environmental Data Initiative. https://doi.org/10.6073/pasta/67a558a24ceed9a0a5bf5e46ab841174. 
+
+
+## Read in data
+### identify NAs, and get mean values per site
+```{r}
+stream <- read_csv(here::here("data","sbc_lter_registered_stream_chemistry.csv")) %>% 
+  na_if(-999.0) 
+
+stream_mean <- stream %>% 
+  group_by(site_code) %>% 
+  summarize(
+    mean_nh4_uM = mean(na.omit(nh4_uM)),
+    mean_no3_uM = mean(na.omit(no3_uM)),
+    mean_po4_uM = mean(na.omit(po4_uM)),
+    mean_tdn_uM = mean(na.omit(tdn_uM)),
+    mean_tdp_uM = mean(na.omit(tdp_uM)),
+    mean_tpc_uM = mean(na.omit(tpc_uM)),
+    mean_tpn_uM = mean(na.omit(tpn_uM)),
+    mean_tpp_uM = mean(na.omit(tpp_uM)),
+    mean_tss_mgperLiter = mean(na.omit(tss_mgperLiter)),
+    mean_spec_cond_uSpercm = mean(na.omit(spec_cond_uSpercm))
+  )
+```
+## Calculate distance matrix
+### remove sites with NAs, scale, and calculate euclidean distance
+```{r}
+#remove rows with NAs 
+stream_nona <- stream_mean %>% 
+  drop_na(c(2:11)) 
+
+#scale (this might be unneccessary since most things are in the same units)
+stream_scale <- stream_nona %>% 
+  select(2:11) %>% 
+  scale()
+
+#add rownames back
+rownames(stream_scale) <- stream_nona$site_code
+
+# Calculate euclidean distance matrix
+euc_dist <- dist(stream_scale, method = "euclidean")
+
+```
+
+## Clustering by the smallest maximum distance between two observations in distinct clusters - *complete linkage*
+```{r}
+# complete linkage hierarchical clustering
+hc_complete <- hclust(euc_dist, method = "complete" )
+
+# Plot dendrogram
+ggdendrogram(hc_complete, 
+             rotate = TRUE) +
+  theme_minimal()+
+  labs(x="Stream Site", "euclidean distance")
+```
+

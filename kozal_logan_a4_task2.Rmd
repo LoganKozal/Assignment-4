@@ -1,0 +1,123 @@
+---
+title: "task2"
+author: "Logan Kozal"
+date: "3/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(here)
+library(janitor)
+library(tsibble)
+library(lubridate)
+library(broom)
+```
+
+Data: Global wild fish catch and aquaculture production, compiled by Earth Policy Institute with 1950-2010 from U.N. Food and Agriculture Organization (FAO), Global Capture Production and Global Aquaculture Production, electronic databases, at www.fao.org/fishery/topic/16140/en.
+
+## Read in data
+
+```{r}
+catch <- read_csv(here::here("data","fish_catch.csv"), skip=2) %>% 
+  clean_names() %>% 
+  rename(wild_catch_million_tons = "wild_catch") %>% 
+  mutate(wild_catch_million_tons = as.numeric(wild_catch_million_tons))
+
+catch <- catch[-c(1:2), ]
+catch <- catch[-c(64:67), ]
+
+catch_ts <- catch %>% 
+  mutate(year = as.Date(year, format = "%Y" )) %>% 
+  mutate(year = lubridate::year(year)) %>% 
+  as_tsibble(key = NULL, index = year)
+
+
+```
+
+```{r}
+ggplot(catch_ts, aes(x=year, y=wild_catch_million_tons))+
+  geom_point()
+```
+
+This looks like logistic growth because it levels off at some maximum value at the top.
+The growth looks pretty linear up to 1987 then levels off.
+So the equation for catch would be:
+$C(t)=\frac{K}{1+Ae^{-kt}}$ 
+
+- $K$ is the maximum value
+- $A$ is $\frac{K-C_0}{C_0}$
+- $k$ is the growth rate constant
+
+
+## Find intitial estimates of parameters
+Visually the max value, K, looks to be about ~90, we have to estimate k and A
+```{r}
+# convert years to a count starting at 0
+catch_mod <- catch_ts %>% 
+  mutate(
+    year = year-1950
+  )
+
+# Pull out pre-1987 (37 years) and log transform the population to estimate k, this doesnt actually look very exponential but I don't know what other distribution this could be 
+
+catch_exp <- catch_mod %>% 
+  filter(year <= 37) %>% 
+  mutate(ln_catch = log(wild_catch_million_tons))
+  
+# Find the slope of the linear equation to estimate of the growth rate constant, k
+lm_k <- lm(ln_catch ~ catch_exp$year, data = catch_exp)
+lm_k
+
+# Growth rate k ~ 0.035
+
+```
+So to get an estimate for A we can use the formula $A = \frac{K-C_0}{C_0}$
+$C_0$ is 17.2 so $A = \frac{90-17.2}{17.2}$ 
+
+So we can use these as our starting estimates:
+K ~ 90
+A ~ 4.23
+k ~ 0.035
+
+and iterate from there
+
+```{r}
+catch_nls <- nls(wild_catch_million_tons ~ K/(1 + A*exp(-k*year)),
+              data = catch_mod,
+              start = list(K = 90, A = 4.23, k = 0.035),
+              trace = TRUE
+              )
+
+summary(catch_nls)
+
+#model output summarized
+model_out <- broom::tidy(catch_nls) 
+
+```
+ So our estimated model is: 
+ $C(t) = \frac{100.28}{1+4.32e^{-0.07t}}$
+ K = 100.28 million tons
+ A = 4.32 (unitless)
+ k = 0.07 million tons/year
+
+```{r}
+# Make predictions for the population at all of those times (time) in the original df: 
+catch_predict <- predict(catch_nls)
+
+# Bind predictions to original data frame:
+catch_bind <- data.frame(catch_mod, catch_predict) %>% 
+  mutate(year = year+1950)
+
+
+# Plot them all together:
+ggplot(data = catch_bind, aes(x = year, y = wild_catch_million_tons)) +
+  geom_point() +
+  geom_line(aes(x = year, y = catch_predict)) +
+  theme_bw()+
+  labs(y= "Wild Catch (million tons)", x=NULL)
+
+```
+

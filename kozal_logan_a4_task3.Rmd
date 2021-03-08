@@ -1,0 +1,97 @@
+---
+title: "task3"
+author: "Logan Kozal"
+date: "3/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(here)
+library(tidyverse)
+library(boot)
+```
+
+Data: 2014 UCSB Campus Climate Project Final Report (prepared by Rankin & Associates Consulting, available at http://campusclimate.ucop.edu/_common/files/pdf-climate/ucsb-full-report.pdf).
+
+```{r, echo = FALSE}
+#recreate data
+df <- tribble(~response,
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "yes",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              "no",
+              )
+
+```
+
+
+```{r}
+# Create a function that will calculate the proportion of "yes" answers
+
+prop_fun <- function (x,i) {sum(x[i]=="yes")/length(x[i])
+  }
+
+
+res <- df$response
+
+# calculate the proportion of yes responses in 10000 bootstrap samples
+resboot_10000 <- boot(res, 
+                    statistic = prop_fun,
+                    R = 10000)
+
+resboot_10000
+```
+
+```{r}
+# convert vector of bootstrap proportions into df
+resboot_10000_df <- data.frame(bs_prop = resboot_10000$t)
+
+
+# Histogram of 10000 bootstrap sample proportions:
+ggplot(data = resboot_10000_df, aes(x = bs_prop)) +
+  geom_histogram(bins=24)+
+  labs(x="proportion yes responses")+
+  theme_bw()
+```
+
+```{r}
+# calculate bootstrap confidence interval
+boot.ci(resboot_10000, conf = 0.95)
+# 95 of 100 calculated confidence intervals will contain the actual population parameter
+
+```
+The mean proportion of UCSB community members identifying as nonbinary/genderqueer who responded that they had personally experienced “exclusionary, offensive, hostile or intimidating conduct” was 0.61 (22 out of 36 respondents), with a bootstrapped 95% confidence interval of [0.44, 0.78] (n = 10,000 bootstrap samples). 
